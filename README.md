@@ -17,6 +17,29 @@ It adheres strictly to:
 * Expected **Gold layer schema and validation queries**
 
 ---
+## Repository Layout
+
+```
+your-submission/
+├── Dockerfile                      # Extends nedbank-de-challenge/base:1.0
+├── requirements.txt                # Your extra Python dependencies (may be empty)
+├── pipeline/
+│   ├── __init__.py
+│   ├── run_all.py                  # Entry point — do not rename
+│   ├── ingest.py                   # Bronze layer — implement this
+│   ├── transform.py                # Silver layer — implement this
+│   ├── provision.py                # Gold layer — implement this
+│   └── stream_ingest.py            # Stage 3 only — implement at Stage 3
+├── config/
+│   ├── pipeline_config.yaml        # Paths and Spark settings
+│   └── dq_rules.yaml               # DQ rules (required from Stage 2)
+├── stream/                             # Stage 3 stream data for local testing
+│   ├── .gitkeep
+│   └── README.md
+├── adr/
+│   └── stage3_adr.md               # Architecture Decision Record (Stage 3 only)
+└── README.md                       # This file
+```
 
 ##  Architecture (Aligned to Challenge Stages)
 
@@ -145,7 +168,9 @@ docker run --rm \
 ```
 
 ✔ Exits with code `0`
+
 ✔ Writes to `/data/output/` only
+
 ✔ No external dependencies
 
 ---
@@ -227,7 +252,9 @@ This ensures the dataset is usable for:
 ### Stage 1 (Current)
 
 ✔ Batch pipeline
+
 ✔ Validated Gold output
+
 ✔ Passes scoring constraints
 
 ---
