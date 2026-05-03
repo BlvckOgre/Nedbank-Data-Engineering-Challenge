@@ -1,0 +1,9 @@
+input_paths:
+  accounts: /data/input/accounts.csv
+  customers: /data/input/customers.csv
+  transactions: /data/input/transactions.jsonl
+
+output_paths:
+  bronze: /data/output/bronze
+  silver: /data/output/silver
+  gold: /data/output/gold
