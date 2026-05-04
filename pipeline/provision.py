@@ -8,6 +8,7 @@ from pyspark.sql.functions import (
 )
 from pyspark.sql.functions import count, sum, avg
 from pyspark.sql.functions import when
+from dq_report import DQReport
 
 # -----------------------------
 # Logging
@@ -17,14 +18,6 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
-
-
-# -----------------------------
-# Spark Session
-# -----------------------------
-#def get_spark():
-#    return SparkSession.builder.appName("Gold Layer").getOrCreate()
-
 
 # -----------------------------
 # Load Config
@@ -51,14 +44,20 @@ def build_gold(transactions, accounts, customers):
     df = transactions.join(
         accounts,
         on="account_id",
-        how="inner"
+        how="left"
+    )
+
+    df = df.withColumn(
+        "dq_flag",
+        when(col("account_type").isNull(), "ORPHANED_ACCOUNT")
+        .otherwise(col("dq_flag"))
     )
 
     # Join -> customers
     df = df.join(
         customers,
         accounts.customer_ref == customers.customer_id,
-        "inner"
+        "left"
     )
 
     # Aggregation
@@ -134,6 +133,8 @@ def build_gold(transactions, accounts, customers):
         col("customer_id"),
         col("transaction_timestamp"),
         col("transaction_month"),
+        col("merchant_category"),
+        col("merchant_subcategory"),
         col("amount"),
         col("currency"),
         col("transaction_type"),
@@ -145,12 +146,14 @@ def build_gold(transactions, accounts, customers):
         col("transaction_count"),
         col("total_spent"),
         col("avg_transaction"),
+        col("dq_flag"),
         col("high_retry_flag"),
         col("high_value_txn_flag"),
         col("potential_fraud_flag"),
         col("fraud_risk_flag"),
         col("fraud_score"),
-        col("fraud_risk_level")
+        col("fraud_risk_level"),
+        col("ingestion_timestamp")
     )
 
     return df
@@ -179,11 +182,18 @@ def main():
 
         silver = config["output_paths"]["silver"]
         gold = config["output_paths"]["gold"]
+        dq = DQReport()
 
         # Load Silver
         transactions_df = read_silver(spark, f"{silver}/transactions")
         accounts_df = read_silver(spark, f"{silver}/accounts")
         customers_df = read_silver(spark, f"{silver}/customers")
+
+        dq.set_source_counts(
+            customers_df.count(),
+            accounts_df.count(),
+            transactions_df.count()
+        )
 
         # Build Gold
         gold_df = build_gold(
@@ -192,13 +202,27 @@ def main():
             customers_df
         )
 
+        gold_df.cache() 
+
+        dq.set_gold_count(gold_df.count())
+
+        dq.add_issue("NULL_REQUIRED", gold_df.filter(col("dq_flag") == "NULL_REQUIRED").count(), "FLAGGED")
+        dq.add_issue("TYPE_MISMATCH", gold_df.filter(col("dq_flag") == "TYPE_MISMATCH").count(), "FLAGGED")
+        dq.add_issue("DATE_FORMAT", gold_df.filter(col("dq_flag") == "DATE_FORMAT").count(), "FLAGGED")
+        dq.add_issue("ORPHANED_ACCOUNT", gold_df.filter(col("dq_flag") == "ORPHANED_ACCOUNT").count(), "FLAGGED")
+        dq.add_issue("CURRENCY_VARIANT", gold_df.filter(col("currency_variant_flag") == 1).count(),"NORMALISED")
+        dq.add_issue("DUPLICATE_DEDUPED", gold_df.filter(col("dq_flag") == "DUPLICATE_DEDUPED").count(),"FLAGGED")
+
         # Write Gold
         write_gold(gold_df, f"{gold}/fact_transactions")
 
         logger.info("Gold layer created successfully")
 
+        dq.save()
+
         spark.stop()
         return
+    
 
     except Exception as e:
         logger.error(f"Error: {str(e)}")
