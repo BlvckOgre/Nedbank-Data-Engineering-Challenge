@@ -2,7 +2,7 @@ import yaml
 import logging
 
 from pipeline.spark_session import get_spark
-from pyspark.sql.functions import col, to_timestamp, concat_ws, to_date, coalesce
+from pyspark.sql.functions import col, to_timestamp, concat_ws, to_date, coalesce, when
 from pyspark.sql.window import Window
 from pyspark.sql.functions import row_number
 
