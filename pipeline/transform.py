@@ -222,6 +222,7 @@ def transform_transactions(df, dq_rules):
         "duplicate_flag",
         when(col("duplicate_count") > 1, 1).otherwise(0)
     )
+    df = df.persist()
 
     df = deduplicate(df, "transaction_id")
     df = apply_dq_rules(df, dq_rules["transactions"])
