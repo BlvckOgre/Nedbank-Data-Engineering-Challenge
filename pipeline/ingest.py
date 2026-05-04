@@ -37,7 +37,7 @@ def ingest_csv(spark, input_path, source_name):
     df = (
         spark.read
         .option("header", True)
-        .option("inferSchema", False)  # IMPORTANT: no inference in Bronze
+        .option("inferSchema", true) 
         .csv(input_path)
     )
 
