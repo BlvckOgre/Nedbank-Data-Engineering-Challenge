@@ -180,6 +180,11 @@ def transform_transactions(df, dq_rules):
     )
 
     df = df.withColumn(
+        "date_flag",
+        when(col("transaction_date_clean").isNull(), 1).otherwise(0)
+    )
+
+    df = df.withColumn(
         "transaction_timestamp",
         to_timestamp(concat_ws(" ", col("transaction_date_clean"), col("transaction_time")))
     )
@@ -189,8 +194,9 @@ def transform_transactions(df, dq_rules):
 
     df = df.withColumn("transaction_date", to_date(col("transaction_date")))
     df = df.drop("transaction_time")
-    
+    df = df.withColumn("amount_type_flag", when(col("amount").cast("string").rlike("^[0-9.]+$"), 0).otherwise(1))
     df = df.withColumn("amount", col("amount").cast("double"))
+    df = df.withColumn("currency_variant_flag", when(~col("currency").isin("ZAR", "zar"), 1).otherwise(0))
 
     # Currency normalisation 
     df = df.withColumn(
@@ -205,17 +211,6 @@ def transform_transactions(df, dq_rules):
         when(col("retry_flag").isin(True, "true", "True", 1), True).otherwise(False)
     )
 
-    df = deduplicate(df, "transaction_id")
-    df = apply_dq_rules(df, dq_rules["transactions"])
-    df = df.withColumn(
-        "dq_flag",
-        when(col("account_id").isNull(), "NULL_REQUIRED")
-        .when(col("amount").isNull(), "TYPE_MISMATCH")
-        .when(col("transaction_date").isNull(), "DATE_FORMAT")
-        .when(col("transaction_type_invalid_flag") == 1, "TYPE_MISMATCH")
-        .otherwise(None)
-    )
-
     dup_window = Window.partitionBy("transaction_id")
 
     df = df.withColumn(
@@ -227,6 +222,23 @@ def transform_transactions(df, dq_rules):
         "duplicate_flag",
         when(col("duplicate_count") > 1, 1).otherwise(0)
     )
+
+    df = deduplicate(df, "transaction_id")
+    df = apply_dq_rules(df, dq_rules["transactions"])
+    
+
+    df = df.withColumn(
+        "dq_flag",
+        when(col("transaction_id_null_flag") == 1, "NULL_REQUIRED")
+        .when(col("amount_out_of_range_flag") == 1, "TYPE_MISMATCH")
+        .when(col("transaction_type_invalid_flag") == 1, "TYPE_MISMATCH")
+        .when(col("amount_type_flag") == 1, "TYPE_MISMATCH")
+        .when(col("currency_variant_flag") == 1, "CURRENCY_VARIANT")
+        .when(col("date_flag") == 1, "DATE_FORMAT")
+        .when(col("duplicate_flag") == 1, "DUPLICATE_DEDUPED")
+        .otherwise(None)
+    )
+
 
     return df
 
