@@ -33,7 +33,7 @@ def ingest_csv(spark, input_path, source_name):
     df = (
         spark.read
         .option("header", True)
-        .option("inferSchema", true) 
+        .option("inferSchema", True) 
         .csv(input_path)
     )
 
