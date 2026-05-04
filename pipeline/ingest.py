@@ -6,8 +6,7 @@ from datetime import datetime
 
 from pipeline.spark_session import get_spark
 from pyspark.sql.functions import current_timestamp, lit
-
-
+from pyspark.sql.functions import col
 
 
 # -----------------------------
@@ -18,18 +17,6 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
-
-
-# 
-# Spark Session
-#
-#def get_spark():
-#    spark = (
-#       SparkSession.builder
-#        .appName("Bronze Ingestion Layer")
-#        .getOrCreate()
-#    )
-#    return spark
 
 
 # -----------------------------
@@ -72,6 +59,8 @@ def ingest_json(spark, input_path, source_name):
         .json(input_path)
     )
 
+    df = df.select([col(c).cast("string").alias(c) for c in df.columns])
+
     df = df.withColumn("ingestion_timestamp", current_timestamp()) \
            .withColumn("source", lit(source_name))
 
@@ -96,11 +85,7 @@ def write_bronze(df, output_path, source_name):
 # -----------------------------
 # Main Execution
 # -----------------------------
-#transactions_df = ingest_json(
-#    spark,
-#    input_paths["transactions"],
-#    "transactions"
-#)
+
 
 def resolve_transactions_path(config_path):
     if os.path.exists("/data/input/transactions.jsonl"):
@@ -136,12 +121,6 @@ def main():
         )
         write_bronze(customers_df, bronze_output, "customers")
 
-        # Ingest Transactions
-        #transactions_df = ingest_json(
-        #    spark,
-         #   input_paths["transactions"],
-         #   "transactions"
-        #)
         resolved_path = resolve_transactions_path(input_paths["transactions"])
         logger.info(f"Resolved transactions path: {resolved_path}")
 
