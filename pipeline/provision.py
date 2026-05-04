@@ -19,6 +19,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+
 # -----------------------------
 # Load Config
 # -----------------------------
@@ -53,10 +55,10 @@ def build_gold(transactions, accounts, customers):
         .otherwise(col("dq_flag"))
     )
 
+    accounts = accounts.withColumnRenamed("customer_ref", "customer_id_ref")
     # Join -> customers
     df = df.join(
-        customers,
-        accounts.customer_ref == customers.customer_id,
+        customers,col("customer_id_ref") == customers.customer_id,
         "left"
     )
 
@@ -206,12 +208,21 @@ def main():
 
         dq.set_gold_count(gold_df.count())
 
-        dq.add_issue("NULL_REQUIRED", gold_df.filter(col("dq_flag") == "NULL_REQUIRED").count(), "FLAGGED")
-        dq.add_issue("TYPE_MISMATCH", gold_df.filter(col("dq_flag") == "TYPE_MISMATCH").count(), "FLAGGED")
-        dq.add_issue("DATE_FORMAT", gold_df.filter(col("dq_flag") == "DATE_FORMAT").count(), "FLAGGED")
-        dq.add_issue("ORPHANED_ACCOUNT", gold_df.filter(col("dq_flag") == "ORPHANED_ACCOUNT").count(), "FLAGGED")
-        dq.add_issue("CURRENCY_VARIANT", gold_df.filter(col("currency_variant_flag") == 1).count(),"NORMALISED")
-        dq.add_issue("DUPLICATE_DEDUPED", gold_df.filter(col("dq_flag") == "DUPLICATE_DEDUPED").count(),"FLAGGED")
+        dq_counts = gold_df.select(
+            count(when(col("dq_flag") == "NULL_REQUIRED", True)).alias("NULL_REQUIRED"),
+            count(when(col("dq_flag") == "TYPE_MISMATCH", True)).alias("TYPE_MISMATCH"),
+            count(when(col("dq_flag") == "DATE_FORMAT", True)).alias("DATE_FORMAT"),
+            count(when(col("dq_flag") == "ORPHANED_ACCOUNT", True)).alias("ORPHANED_ACCOUNT"),
+            count(when(col("dq_flag") == "DUPLICATE_DEDUPED", True)).alias("DUPLICATE_DEDUPED"),
+            count(when(col("currency_variant_flag") == 1, True)).alias("CURRENCY_VARIANT")
+        ).collect()[0]
+        
+        dq.add_issue("NULL_REQUIRED", dq_counts["NULL_REQUIRED"], "FLAGGED")
+        dq.add_issue("TYPE_MISMATCH", dq_counts["TYPE_MISMATCH"], "FLAGGED")
+        dq.add_issue("DATE_FORMAT", dq_counts["DATE_FORMAT"], "FLAGGED")
+        dq.add_issue("ORPHANED_ACCOUNT", dq_counts["ORPHANED_ACCOUNT"], "FLAGGED")
+        dq.add_issue("DUPLICATE_DEDUPED", dq_counts["DUPLICATE_DEDUPED"], "FLAGGED")
+        dq.add_issue("CURRENCY_VARIANT", dq_counts["CURRENCY_VARIANT"], "NORMALISED")
 
         # Write Gold
         write_gold(gold_df, f"{gold}/fact_transactions")
